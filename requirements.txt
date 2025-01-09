@@ -5,3 +5,4 @@ plotly
 streamlit-echarts
 python-dateutil
 numpy
+openpyxl
