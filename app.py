@@ -7,6 +7,10 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 from streamlit_echarts import st_echarts
+import numpy as np
+import datetime
+
+
 st.set_page_config(layout="wide", initial_sidebar_state="auto")
 # Define your custom CSS
 custom_css = """
@@ -19,6 +23,9 @@ custom_css = """
 
 # Simulate some social listening data
 base_dir = os.path.dirname(__file__)
+sourcesans3 = os.path.join(base_dir, 'SourceSans3.ttf')
+sourcesans3bold = os.path.join(base_dir, 'SourceSans3Bold.ttf')
+sourcesans3semibold = os.path.join(base_dir, 'SourceSans3SemiBold.ttf')
 
 
 @st.cache_data
@@ -34,9 +41,24 @@ df, fanpage_df = loaddata()
 
 # Sidebar for filtering
 st.sidebar.header("Filters")
+# If this already returns datetime.date
+min_date = df["PublishedDate"].min()  
+max_date = df["PublishedDate"].max()
 
-start_date = st.sidebar.date_input("Start Date", df['PublishedDate'].min())
-end_date = st.sidebar.date_input("End Date", df['PublishedDate'].max())
+# Now use 'min_date' directly in date_input
+start_date = st.sidebar.date_input(
+    "Start Date",
+    value=datetime.date(2024, 9, 1),
+    min_value=min_date,
+    max_value=max_date
+)
+
+end_date = st.sidebar.date_input(
+    "End Date",
+    value=datetime.date(2024, 9, 30),
+    min_value=min_date,
+    max_value=max_date
+)
 platforms = st.sidebar.multiselect("Select Platform", df['Channel'].unique(), df['Channel'].unique())
 sentiment = st.sidebar.multiselect("Select Sentiment", df['Sentiment'].unique(), df['Sentiment'].unique())
 
@@ -125,7 +147,7 @@ with st.container(key = "container", height=200, border = False):
             negative_count = filtered_df['Sentiment'].str.lower().value_counts().get('negative', 0)
 
             # Step 3: Calculate total sentiments (excluding blanks)
-            total_count = len(filtered_df)
+            total_count = filtered_df['Sentiment'].count()
 
             # Step 4: Calculate percentages
             percent_positive = (positive_count / total_count) * 100 if total_count > 0 else 0
@@ -142,7 +164,7 @@ with st.container(key = "container", height=200, border = False):
         change_in_nsr = current_nsr - previous_nsr
         # Total engagement
         # Step 1: Convert columns to numeric, coercing errors to NaN
-        numeric_columns = ['Reactions', 'Comments', 'Views', 'Shares']
+        numeric_columns = ['Likes', 'Comments', 'Views', 'Shares']
         df[numeric_columns] = df[numeric_columns].apply(pd.to_numeric, errors='coerce')
 
         # Step 2: Replace NaN values with 0 for summation
@@ -244,9 +266,13 @@ with st.container(key = "container", height=200, border = False):
     with metric5:
         st.markdown(
             f"""
-            <div style="text-align: center; background-color: #FFFFFF; border-radius: 15px; padding: 10px; box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2); min-height: 120px;">
+            <div style="text-align: center; background-color: #FFFFFF; 
+                        border-radius: 15px; padding: 10px; 
+                        box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2); 
+                        min-height: 120px;">
                 <div style="font-size:18px;">👑 NSR</div>
-                <div style="font-size:30px; font-weight:bold;">{current_nsr:,.1f}</div>
+                <!-- Multiply by 100 to display as a percentage, then add '%' at the end -->
+                <div style="font-size:30px; font-weight:bold;">{current_nsr * 100:,.1f}%</div>
             </div>
             """, 
             unsafe_allow_html=True
@@ -279,7 +305,7 @@ with st.container(key = "container1", border = True):
             )
 
         # Table headers
-        col11, col12, col13 = st.columns([4, 1, 1])  # Reuse column widths for the rows
+        col11, col12, col13 = st.columns([3, 1, 1])  # Reuse column widths for the rows
         with col11:
             st.markdown("**Metric**")
         with col12:
@@ -288,7 +314,7 @@ with st.container(key = "container1", border = True):
             st.markdown("**Change**")
 
         # Table rows
-        col11, col12, col13 = st.columns([4, 1, 1])
+        col11, col12, col13 = st.columns([3, 1, 1])
         with col11:
             st.markdown("Followers")
         with col12:
@@ -296,7 +322,7 @@ with st.container(key = "container1", border = True):
         with col13:
             st.markdown(f"🔼 {percent_growth}%")  # Add up-arrow emoji for positive growth
 
-        col11, col12, col13 = st.columns([4, 1, 1])
+        col11, col12, col13 = st.columns([3, 1, 1])
         with col11:
             st.markdown("Net Follower Growth")
         with col12:
@@ -542,7 +568,7 @@ with st.container(key = "container2", border = True):
                     hoverinfo="none",
                     textfont=dict(
                         size=12,
-                        family="Open Sans",
+                        family= sourcesans3bold,
                         color="white",
                     ),
                 )
@@ -555,7 +581,7 @@ with st.container(key = "container2", border = True):
                 y=i,  
                 text=row["Channel"],
                 showarrow=False,
-                font=dict(size=12, family="Open Sans", color="white"),
+                font=dict(size=12, family= sourcesans3bold, color="white"),
                 align="center",
             )
             for i, row in channel_counts.iterrows()
@@ -658,7 +684,7 @@ with st.container(border = True):
 
             male = round(male / bodyMax * 100, 1)
             female = round(female / bodyMax * 100, 1)
-            sourcesans3 = os.path.join(base_dir, 'SourceSans3.ttf')
+            
             # Label settings for the bars
             labelSetting = {
                 "show": True,
@@ -811,9 +837,6 @@ with st.container(border = True):
 
 #############################################break############################################################
 
-import numpy as np
-import plotly.graph_objects as go
-import streamlit as st
 
 def sentiment_percentage(df):
     """Calculate Positive, Negative, Neutral percentages."""
