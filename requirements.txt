@@ -6,3 +6,4 @@ streamlit-echarts
 python-dateutil
 numpy
 openpyxl
+datetime
