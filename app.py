@@ -47,7 +47,7 @@ def loaddata():
     return df, fanpage_df
 
 # Retrieve JSON credentials from Streamlit secrets
-credentials_str = st.secrets["google"]["credentials"]
+credentials_str = st.secrets["google"]
 
 # Set the environment variable to point to the temporary file
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_str
