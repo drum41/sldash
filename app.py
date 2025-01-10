@@ -408,7 +408,7 @@ with st.container(key = "container1", border = True):
             return current_counts, previous_counts, aligned_data
         current_counts, previous_counts, aligned_data = calculate_mention_trend(current_period, previous_period)
         prompt_mention = "Compare the volume of mentions between the current period and the previous period. Identify the point at which the discussion trends between the two periods show a significant divergence."
-        data_mention = f"Current Period date data: {current_counts.to_string(index=False)}\n\nPrevious Period date data: {previous_counts.to_string(index=False)}\n\nAligned data: {aligned_data.to_string(index=False)}"
+        data_mention = f"Current and previous period aligned data: {aligned_data.to_string(index=False)}"
 
 
         #====================================================================
