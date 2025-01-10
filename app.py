@@ -17,7 +17,6 @@ from vertexai.generative_models import (
     GenerationConfig,
     GenerativeModel)
 from collections import defaultdict
-import tempfile
 
 
 
@@ -51,13 +50,8 @@ def loaddata():
 # Retrieve JSON credentials from Streamlit secrets
 credentials_json = st.secrets["google"]["credentials"]
 
-# Write the JSON to a temporary file
-with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as temp_file:
-    temp_file.write(credentials_json.encode())  # Write as bytes
-    temp_file_path = temp_file.name
-
 # Set the environment variable to point to the temporary file
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file_path
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_json
 
 PROJECT_ID = "hybrid-autonomy-445719-q2"
 vertexai.init(project=PROJECT_ID)
