@@ -48,20 +48,11 @@ def loaddata():
     fanpage_df['PublishedDate'] = pd.to_datetime(fanpage_df['PublishedDate']).dt.date
     return df, fanpage_df
 
-import json
 # Parse the JSON to ensure it is valid
 credentials_str = st.secrets["google"]["credentials"]
-credentials_dict = json.loads(credentials_str)
-
-
-
-# Write the credentials file to the current working directory
-credentials_file = "google_credentials.json"
-with open(credentials_file, "w") as f:
-    json.dump(credentials_dict, f)
 
 # Set the environment variable to the file path
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "google_credentials.json"
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_str
 
 PROJECT_ID = "hybrid-autonomy-445719-q2"
 vertexai.init(project=PROJECT_ID)
@@ -74,7 +65,7 @@ def stream_data(insight):
     for word in insight.split(" "):
         yield word + " "
         time.sleep(0.05)
-creds = os.path.abspath(credentials_file)
+creds = credentials_str
 genai.configure(credentials=creds)
 
 def gen_insight(prompt, data):
