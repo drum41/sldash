@@ -46,17 +46,22 @@ def loaddata():
     fanpage_df['PublishedDate'] = pd.to_datetime(fanpage_df['PublishedDate']).dt.date
     return df, fanpage_df
 
-# Retrieve JSON credentials from Streamlit secrets
-credentials_str = st.secrets["google"]["credentials"]
+# # Retrieve JSON credentials from Streamlit secrets
+# credentials_str = st.secrets["google"]["credentials"]
 
-# Create a temporary JSON file to store the credentials
-with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as temp_file:
-    temp_file.write(credentials_str.encode())
-    temp_file_name = temp_file.name
+# # Create a temporary JSON file to store the credentials
+# with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as temp_file:
+#     temp_file.write(credentials_str.encode())
+#     temp_file_name = temp_file.name
 
-# Set the environment variable to point to that temporary file
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file_name
+# # Set the environment variable to point to that temporary file
+# os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file_name
+from google.oauth2 import service_account
+from google.cloud import storage
 
+creds_info = json.loads(st.secrets["google"]["credentials"])
+credentials = service_account.Credentials.from_service_account_info(creds_info)
+client = storage.Client(credentials=credentials)
 
 PROJECT_ID = "hybrid-autonomy-445719-q2"
 vertexai.init(project=PROJECT_ID)
@@ -69,8 +74,7 @@ def stream_data(insight):
     for word in insight.split(" "):
         yield word + " "
         time.sleep(0.05)
-creds = os.path.join(base_dir, 'tts.json')
-genai.configure(credentials=creds)
+genai.configure(credentials=credentials)
 
 def gen_insight(prompt, data):
     global gemini_model
