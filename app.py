@@ -9,6 +9,16 @@ import plotly.graph_objects as go
 from streamlit_echarts import st_echarts
 import numpy as np
 import datetime
+import google.generativeai as genai
+import time
+from streamlit_timeline import timeline
+import vertexai
+from vertexai.generative_models import (
+    GenerationConfig,
+    GenerativeModel)
+from collections import defaultdict
+import tempfile
+
 
 
 st.set_page_config(layout="wide", initial_sidebar_state="auto")
@@ -20,6 +30,7 @@ custom_css = """
 }
 </style>
 """
+
 
 # Simulate some social listening data
 base_dir = os.path.dirname(__file__)
@@ -36,6 +47,42 @@ def loaddata():
     df['PublishedDate'] = pd.to_datetime(df['PublishedDate']).dt.date
     fanpage_df['PublishedDate'] = pd.to_datetime(fanpage_df['PublishedDate']).dt.date
     return df, fanpage_df
+
+# Retrieve JSON credentials from Streamlit secrets
+credentials_json = st.secrets["google"]["credentials"]
+
+# Write the JSON to a temporary file
+with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as temp_file:
+    temp_file.write(credentials_json.encode())  # Write as bytes
+    temp_file_path = temp_file.name
+
+# Set the environment variable to point to the temporary file
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file_path
+
+PROJECT_ID = "hybrid-autonomy-445719-q2"
+vertexai.init(project=PROJECT_ID)
+gemini_model = GenerativeModel(
+"gemini-1.5-pro",
+generation_config=GenerationConfig(temperature=0.3))
+
+
+def stream_data(insight):
+    for word in insight.split(" "):
+        yield word + " "
+        time.sleep(0.05)
+creds = os.path.join(base_dir, 'tts.json')
+genai.configure(credentials=creds)
+
+def gen_insight(prompt, data):
+    global gemini_model
+    prompt += f"""
+    QUERY: Give concise insights base on the data you've provided. Only answer in English and no more than 50 words \n {data}
+    CONTEXT:
+    This is data of LG Electronics Vietnam on social media. The data cover the period of {start_date} to {end_date}.
+    """
+    response = gemini_model.generate_content(prompt)
+    return response.text.replace("$", "\\$")
+
 
 df, fanpage_df = loaddata()
 
@@ -333,8 +380,7 @@ with st.container(key = "container1", border = True):
 
     with col2:
         st.subheader("Mention Trendline")
-
-        def plot_mention_trendline_plotly(current_period, previous_period, date_col='PublishedDate', value_col='Id'):
+        def calculate_mention_trend(current_period, previous_period, date_col='PublishedDate', value_col='Id'):
             # Count occurrences of value_col by date
             current_counts = current_period.groupby(date_col)[value_col].count().reset_index()
             previous_counts = previous_period.groupby(date_col)[value_col].count().reset_index()
@@ -352,6 +398,32 @@ with st.container(key = "container1", border = True):
                 how='outer',
                 suffixes=('_current', '_previous')
             ).fillna(0)  # Fill missing values with 0
+
+            return current_counts, previous_counts, aligned_data
+        current_counts, previous_counts, aligned_data = calculate_mention_trend(current_period, previous_period)
+        prompt_mention = "Compare the volume of mentions between the current period and the previous period. Identify the point at which the discussion trends between the two periods show a significant divergence."
+        data_mention = f"Current Period date data: {current_counts.to_string(index=False)}\n\nPrevious Period date data: {previous_counts.to_string(index=False)}\n\nAligned data: {aligned_data.to_string(index=False)}"
+
+
+        #====================================================================
+        insight_mention = gen_insight(prompt_mention, data_mention)
+        st.write_stream(stream_data(insight_mention))
+        #====================================================================
+
+        # Access the credentials from Streamlit secrets
+        def plot_mention_trendline_plotly(aligned_data, date_col='PublishedDate', value_col='Id'):
+            """
+            Plot a trendline comparing current and previous periods' mention counts,
+            ensuring the x-axis starts from the min current date and ends with the max current date.
+            
+            Parameters:
+                aligned_data (DataFrame): Data with aligned current and previous counts.
+                date_col (str): Column name representing the date.
+                value_col (str): Column name representing the value to count.
+            """
+            # Determine the date range for the x-axis
+            min_date = aligned_data[date_col].min()
+            max_date = aligned_data[date_col].max()
 
             # Create the Plotly figure
             fig = go.Figure()
@@ -380,11 +452,11 @@ with st.container(key = "container1", border = True):
 
             # Update layout for better readability
             fig.update_layout(
-
                 xaxis_title='Day of the Month',
                 yaxis_title='',
                 xaxis=dict(
                     tickmode='array',
+
                     tickvals=aligned_data[date_col],
                     ticktext=[x.strftime('%d') for x in aligned_data[date_col]],
                     tickangle=45
@@ -393,13 +465,17 @@ with st.container(key = "container1", border = True):
                 margin=dict(l=40, r=40, t=40, b=40),
                 hovermode='x unified',
                 legend=dict(
-                            x=0,
-                            y=1))
+                    x=0,
+                    y=1
+            )
+            )
+            fig.update_xaxes({'range': [min_date, max_date], 'autorange': False})
 
             # Display the plot in Streamlit
             st.plotly_chart(fig, use_container_width=True)
 
-        plot_mention_trendline_plotly(current_period, previous_period)
+
+        plot_mention_trendline_plotly(aligned_data)
 
 
     ###########################################break################################################################
@@ -514,19 +590,24 @@ with st.container(key = "container2", border = True):
         st.markdown("### Top Channels")
 
         # Calculate value counts and percentages
-        channel_counts = df["Channel"].value_counts(normalize=True).reset_index()
-        channel_counts.columns = ["Channel", "Percentage"]
-        channel_counts["Percentage"] = (channel_counts["Percentage"] * 100).round(1)
+        channel_counts1 = df["Channel"].value_counts(normalize=True).reset_index()
+        channel_counts1.columns = ["Channel", "Percentage"]
+        channel_counts1["Percentage"] = (channel_counts1["Percentage"] * 100).round(1)
 
         # Take the top 5 channels and group the rest into "Others"
-        top_5 = channel_counts.iloc[:5]
-        others_sum = channel_counts.iloc[5:]["Percentage"].sum().round(1)
-        others = pd.DataFrame([{"Channel": "Others", "Percentage": others_sum}])
-        channel_counts = pd.concat([top_5, others], ignore_index=True)
+        top_5 = channel_counts1.iloc[:5]
 
+        channel_counts = top_5
+
+        # -------------------------------------------------------------------
+        data_channel = channel_counts1
+        prompt_channel ="Identify the dominant discussion channel along with its market share percentage."
+        insight_channel = gen_insight(prompt_channel, data_channel)
+        st.write_stream(stream_data(insight_channel))
         # -------------------------------------------------------------------
         # Sort by highest to lowest
         channel_counts = channel_counts.sort_values(by="Percentage", ascending=False).reset_index(drop=True)
+
         # -------------------------------------------------------------------
 
         # Define custom colors for each channel
@@ -536,9 +617,8 @@ with st.container(key = "container2", border = True):
             "News": "#5ADDAB",
             "Tiktok": "#F4562F",
             "Forum": "#47D45A",
-            "Others": "#AEAEAE",
             "Fanpage": "#FCC33E",
-            "Social": "#7062D4",
+            "Social": "#FFCC00",
             "Linkedin": "#0A66C2",
         }
 
@@ -597,7 +677,7 @@ with st.container(key = "container2", border = True):
                 # Reversed so the highest percentage appears at the TOP
                 autorange="reversed",
             ),
-            margin=dict(t=50, b=1, l=30, r=10),
+            margin=dict(t=10, b=1, l=30, r=10),
             annotations=annotations,
             barcornerradius=20
         )
@@ -607,41 +687,55 @@ with st.container(key = "container2", border = True):
 #############################################break############################################################
 demo = pd.read_excel(os.path.join(base_dir, 'Demo.xlsx'))
 total_public_infor = demo['UserId'].nunique()
+def create_disk_data(df):
+    # Count occurrences
+    counts = df.groupby(['Vùng miền', 'HomeTown']).size().reset_index(name='Value')
+
+    region_dict = defaultdict(list)
+
+    # Aggregate data into region -> hometown -> value
+    for _, row in counts.iterrows():
+        region_dict[row['Vùng miền']].append({
+            "name": row['HomeTown'],
+            "value": row['Value']
+        })
+
+    # Format into the desired diskData structure
+    diskData = [
+        {
+            "name": region,
+            "children": hometowns
+        }
+        for region, hometowns in region_dict.items()
+    ]
+    return diskData
+
+bodyMax = int(demo['Gender'].count())
+male = int(demo[demo['Gender'] == 'Male']['Gender'].count())
+female = int(demo[demo['Gender'] == 'Female']['Gender'].count())
+
+male = round(male / bodyMax * 100, 1)
+female = round(female / bodyMax * 100, 1)
+counts = demo.groupby(["Gender", "Age Range"]).size().reset_index(name="Count")
+# Get hierarchical data
+diskData = create_disk_data(demo)
+# ---------------------------------------------------------------------
+data_demo = f"Total public gender: {bodyMax}\nMale: {male}%\nFemale: {female}% \nAge Range and Gender ditribution: {counts} \n Region and Hometown distribution: {diskData}"
+prompt_demo = "Identify the distribution of public audience by gender, age range, region, and hometown."
+insight_demo = gen_insight(prompt_demo, data_demo)
+# ---------------------------------------------------------------------
+
 st.container()
 with st.container(border = True):
-    st.write("### Demographics")
-    st.markdown(f"###### Total number of public audience infor: {total_public_infor:,}")
+    colwrite1, colwrite2 = st.columns([1, 5])
+    with colwrite1:
+        st.write("### Demographics")
+    with colwrite2:
+        st.write_stream(stream_data(insight_demo))
+    st.markdown(f"###### Total number of public audience infor: **{total_public_infor:,}**")
     demo1, demo2, demo3 = st.columns([1,1,2])
     with demo3:
         
-        from collections import defaultdict
-        def create_disk_data(df):
-            # Count occurrences
-            counts = df.groupby(['Vùng miền', 'HomeTown']).size().reset_index(name='Value')
-
-            region_dict = defaultdict(list)
-
-            # Aggregate data into region -> hometown -> value
-            for _, row in counts.iterrows():
-                region_dict[row['Vùng miền']].append({
-                    "name": row['HomeTown'],
-                    "value": row['Value']
-                })
-
-            # Format into the desired diskData structure
-            diskData = [
-                {
-                    "name": region,
-                    "children": hometowns
-                }
-                for region, hometowns in region_dict.items()
-            ]
-            return diskData
-
-
-        # Get hierarchical data
-        diskData = create_disk_data(demo)
-
         # Print result
         option = {
             "title": {"text": "Region and Hometown Distribution", "left": "center"},
@@ -678,12 +772,7 @@ with st.container(border = True):
 
             # Max value for the y-axis
             # Convert int64 to native Python int
-            bodyMax = int(demo['Gender'].count())
-            male = int(demo[demo['Gender'] == 'Male']['Gender'].count())
-            female = int(demo[demo['Gender'] == 'Female']['Gender'].count())
 
-            male = round(male / bodyMax * 100, 1)
-            female = round(female / bodyMax * 100, 1)
             
             # Label settings for the bars
             labelSetting = {
@@ -794,7 +883,7 @@ with st.container(border = True):
             st_echarts(options=option, height="600px")    
     with demo2:
         # Count occurrences dynamically
-        counts = demo.groupby(["Gender", "Age Range"]).size().reset_index(name="Count")
+        
 
         # Create the bar chart
         fig = go.Figure()
@@ -836,130 +925,27 @@ with st.container(border = True):
 
 
 #############################################break############################################################
+# Count occurrences of each sentiment per label
+sentiment_counts1 = current_period.groupby(['Labels2', 'Sentiment']).size().unstack(fill_value=0)
 
+# Reorder columns for 'Positive', 'Neutral', 'Negative'
+sentiment_counts = sentiment_counts1[['Positive', 'Neutral', 'Negative']]
 
-def sentiment_percentage(df):
-    """Calculate Positive, Negative, Neutral percentages."""
-    positive = df[df['Sentiment'] == 'Positive']['Sentiment'].count()
-    negative = df[df['Sentiment'] == 'Negative']['Sentiment'].count()
-    neutral = df[df['Sentiment'] == 'Neutral']['Sentiment'].count()
-    total = positive + negative + neutral
-    
-    # Avoid division by zero:
-    if total == 0:
-        return 0, 0, 0
-    
-    positive_pct = round((positive / total) * 100, 1)
-    negative_pct = round((negative / total) * 100, 1)
-    neutral_pct = round((neutral / total) * 100, 1)
-    return positive_pct, negative_pct, neutral_pct
+# Add a total column to sort by total counts
+sentiment_counts['Total'] = sentiment_counts.sum(axis=1)
 
-# Example usage:
-# positive_percentage, negative_percentage, neutral_percentage = sentiment_percentage(current_period)
+# Sort by total count (descending order) or by a specific sentiment if desired
+sentiment_counts = sentiment_counts.sort_values('Total', ascending=False)
 
-# ---------------------------------------------------------------------
-# For demonstration only, let's define these manually:
-positive_percentage = 30
-negative_percentage = 50  # Not displayed
-neutral_percentage  = 20  # Not displayed
-# ---------------------------------------------------------------------
+# Take only the top 10
+sentiment_counts = sentiment_counts.head(7)
 
-# We want one bottom slice for Positive (green), and one for the rest (gray).
-plot_bgcolor = "#F1F4F8"
-
-# Pie slices in the bottom half:
-#  - The top half is an invisible filler (0.5).
-#  - The bottom half is split between green (positive) and gray (everything else).
-quadrant_colors = [
-    plot_bgcolor,  # top (invisible)
-    "green",       # Positive portion
-    "lightgray",   # Remainder portion
-]
-
-# If you want labels, you can modify quadrant_text. Here we show only the green slice label:
-quadrant_text = [
-    "",  # invisible half
-    "<b>Positive</b>",
-    "",
-]
-
-# The pie values must sum to 1. 
-# We reserve 0.5 for the invisible top, then split the bottom 0.5 by positive_percentage.
-pie_values = [
-    0.5,                                   
-    0.5 * (positive_percentage / 100.0),   
-    0.5 * (1 - positive_percentage / 100.0),
-]
-
-# Calculate the pointer angle.
-#  - 0% => angle = π (all the way left)
-#  - 100% => angle = 0 (all the way right)
-hand_angle = np.pi * (1 - positive_percentage / 100.0)
-
-# Adjust this as needed to match the donut's outer radius
-hand_length = 0.3
-
-fig = go.Figure(
-    data=[
-        go.Pie(
-            values=pie_values,
-            rotation=90,          # start from the top so the bottom half is visible
-            hole=0.5,             # donut hole
-            marker_colors=quadrant_colors,
-            text=quadrant_text,
-            textinfo="text",
-            hoverinfo="skip",
-        )
-    ],
-    layout=go.Layout(
-        showlegend=False,
-        autosize=True,
-        margin=dict(b=0, t=10, l=0, r=0),
-        shapes=[
-            # Small circle at the center
-            go.layout.Shape(
-                type="circle",
-                x0=0.495, x1=0.505,
-                y0=0.495, y1=0.505,
-                fillcolor="#333",
-                line_color="#333",
-            ),
-            # The pointer (needle)
-            go.layout.Shape(
-                type="line",
-                x0=0.5,
-                y0=0.5,
-                x1=0.5 + hand_length * np.cos(hand_angle),
-                y1=0.5 + hand_length * np.sin(hand_angle),
-                line=dict(color="#333", width=4),
-            ),
-        ],
-        annotations=[
-            # Example annotation below
-            go.layout.Annotation(
-                text=f"<b>Positive:</b> {positive_percentage}%",
-                x=0.5, xanchor="center", xref="paper",
-                y=0.23, yanchor="bottom", yref="paper",
-                showarrow=False,
-            )
-        ],
-    )
-)
-
-st.plotly_chart(fig, use_container_width=True)
-
-
-
-
-
-import numpy as np
-import plotly.graph_objects as go
-import streamlit as st
-
+# Optionally drop the 'Total' column if you no longer need it for visualization
+sentiment_counts = sentiment_counts.drop(columns=['Total'])
 def sentiment_percentage(df):
     positive = df[df['Sentiment'] == 'Positive']['Sentiment'].count()
     negative = df[df['Sentiment'] == 'Negative']['Sentiment'].count()   
-    neutral = df[df['Sentiment'] == 'Neutral']['Sentiment'].count()
+    neutral = current_period[current_period['Sentiment'] == 'Neutral']['Sentiment'].count()
     total = positive + negative + neutral
     
     # Avoid division by zero:
@@ -971,106 +957,191 @@ def sentiment_percentage(df):
     neutral_pct = round((neutral / total) * 100, 1)
     return positive_pct, negative_pct, neutral_pct
 
-# --------------------------------------------------------------------------
-# Example: 
-# Replace 'current_period' with your actual DataFrame 
-# or keep it as is if you've already defined `current_period`.
-# --------------------------------------------------------------------------
-# positive_percentage, negative_percentage, neutral_percentage = sentiment_percentage(current_period)
+positive_pct, negative_pct, neutral_pct = sentiment_percentage(current_period)
 
-# For demo purposes, let's hard-code some example percentages:
-positive_percentage = 21
-neutral_percentage = 64
-negative_percentage = 15
+sentiment_data = f"Positive: {positive_pct}%\nNegative: {negative_pct}%\nNeutral: {neutral_pct}% \n Top 7 labels with sentiments: {sentiment_counts}"
+prompt_sentiment = "Conclude the sentiment of discussions about the brand based on the proportion of positive and negative discussions and Identify the dominant topic along with its discussion sentiment."
 
-# We’ll create a half-donut with 4 slices:
-#   slice 0 = invisible top half  (0.5)
-#   slice 1 = green for Positive  (0.5 * positive_percentage/100)
-#   slice 2 = gray for Neutral    (0.5 * neutral_percentage/100)
-#   slice 3 = red for Negative    (0.5 * negative_percentage/100)
-#
-# The sum of slices 1..3 should be 0.5 if pos+neu+neg=100.
-# The total Pie = 1.0 (0.5 for the top + 0.5 for the bottom).
-plot_bgcolor = "#F1F4F8"
-quadrant_colors = [
-    plot_bgcolor,   # top (invisible filler)
-    "green",        # Positive
-    "lightgray",    # Neutral
-    "red"           # Negative
-]
+#---------------------------------------------------------------------------------------------------------
 
-# Show labels on each bottom slice (optional)
-quadrant_text = [
-    "",  # no label for the invisible half
-    f"<b>Positive: {positive_percentage}%</b>",
-    f"<b>Neutral: {neutral_percentage}%</b>",
-    f"<b>Negative: {negative_percentage}%</b>",
-]
+sentiment_insight = gen_insight(prompt_sentiment, sentiment_data)
 
-pie_values = [
-    0.5,  # invisible top half
-    0.5 * (positive_percentage / 100.0),
-    0.5 * (neutral_percentage / 100.0),
-    0.5 * (negative_percentage / 100.0),
-]
+#---------------------------------------------------------------------------------------------------------
 
-# --------------------------------------------------------------------------
-# Need an "angle" for the pointer. You can decide which metric it reflects.
-# Example: We'll point at "positive_percentage" for demonstration. 
-# If pos=0 => angle=π (far left); if pos=100 => angle=0 (far right).
-# --------------------------------------------------------------------------
-pointer_value = positive_percentage
-hand_angle = np.pi * (1 - pointer_value / 100.0)
+with st.container(key = "container4", border = True):
+    colwrite3, colwrite4 = st.columns([1,5])
+    with colwrite3:
+        st.subheader("Deepdive Analysis")
+    with colwrite4:
+        st.write_stream(stream_data(sentiment_insight))    
+    col41, col42 = st.columns([1,2])
+    with col41:
+        def sentiment_percentage(df):
+            positive = df[df['Sentiment'] == 'Positive']['Sentiment'].count()
+            negative = df[df['Sentiment'] == 'Negative']['Sentiment'].count()   
+            neutral = current_period[current_period['Sentiment'] == 'Neutral']['Sentiment'].count()
+            total = positive + negative + neutral
+            
+            # Avoid division by zero:
+            if total == 0:
+                return 0, 0, 0
+            
+            positive_pct = round((positive / total) * 100, 1)
+            negative_pct = round((negative / total) * 100, 1)
+            neutral_pct = round((neutral / total) * 100, 1)
+            return positive_pct, negative_pct, neutral_pct
+        
+        # Example: Replace these hardcoded values with actual DataFrame output.
+        positive_percentage = positive_pct
+        neutral_percentage = neutral_pct
+        negative_percentage = negative_pct
 
-# Adjust needle length for your layout
-hand_length = 0.3  
+        # Value to display at the center
+        center_value = f"NSR: {current_nsr * 100:,.1f}%"  # Replace with any value you want
 
-fig = go.Figure(
-    data=[
-        go.Pie(
-            values=pie_values,
-            rotation=90,          # start from top=90° so the bottom half is visible
-            hole=0.5,             # donut hole
-            marker_colors=quadrant_colors,
-            text=quadrant_text,
-            textinfo="text",      # show the text from quadrant_text
-            hoverinfo="skip",     # disable hover if you want
-        )
-    ],
-    layout=go.Layout(
-        showlegend=False,
-        # Let Streamlit handle responsiveness:
-        autosize=True,
-        margin=dict(b=0, t=10, l=0, r=0),
-        shapes=[
-            # The small center circle
-            go.layout.Shape(
-                type="circle",
-                x0=0.495, x1=0.505,
-                y0=0.495, y1=0.505,
-                fillcolor="#333",
-                line_color="#333",
-            ),
-            # The pointer line
-            go.layout.Shape(
-                type="line",
-                x0=0.5,
-                y0=0.5,
-                x1=0.5 + hand_length * np.cos(hand_angle),
-                y1=0.5 + hand_length * np.sin(hand_angle),
-                line=dict(color="#333", width=4),
-            ),
-        ],
-        annotations=[
-            # Example annotation below the gauge
-            go.layout.Annotation(
-                text=f"<b>Pointer value:</b> {pointer_value}%",
-                x=0.5, xanchor="center", xref="paper",
-                y=0.22, yanchor="bottom", yref="paper",
-                showarrow=False,
+        # Colors and labels for each segment
+        plot_bgcolor = "#F1F4F8"
+        quadrant_colors = [
+            plot_bgcolor,   # top (invisible filler)
+            "red",           # Negative
+            "lightgray",    # Neutral
+            "green",        # Positive
+
+        ]
+
+        # Labels for each segment
+        quadrant_text = [
+            "",  # no label for the invisible half
+            f"<b>Negative: {negative_percentage}%</b>",
+            f"<b>Neutral: {neutral_percentage}%</b>",
+            f"<b>Positive: {positive_percentage}%</b>",
+
+        ]
+
+        # Pie chart values reordered to Positive -> Neutral -> Negative
+        pie_values = [
+            0.5,  # invisible top half
+            0.5 * (negative_percentage / 100.0),
+            0.5 * (neutral_percentage / 100.0),
+            0.5 * (positive_percentage / 100.0),    
+        ]   
+
+        # Updated chart with Positive → Neutral → Negative
+        fig = go.Figure(
+            data=[
+                go.Pie(
+                    values=pie_values,
+                    rotation=90,          # Rotate to start Positive on the right
+                    hole=0.5,             # Create a donut chart
+                    marker_colors=quadrant_colors,
+                    text=quadrant_text,
+                    textinfo="text",      # Show the text from quadrant_text
+                    hoverinfo="skip",     # Disable hover if you want
+                    sort=False,           # Don't sort the segments
+                )
+            ],
+            layout=go.Layout(
+                showlegend=False,
+                autosize=True,          # Let Streamlit handle responsiveness
+                margin=dict(b=0, t=10, l=0, r=0),
+                annotations=[
+                    # Central value annotation
+                    go.layout.Annotation(
+                        text=f"<b>{center_value}</b>",  # Value to display
+                        x=0.5, xanchor="center", xref="paper",
+                        y=0.5, yanchor="middle", yref="paper",
+                        showarrow=False,
+                        font=dict(size=20, color="#333")  # Adjust font size and color
+                    )
+                ]
             )
-        ],
-    )
-)
+        )
 
-st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col42: 
+
+
+        # Create the Plotly figure
+        fig = go.Figure()
+
+        # Add each sentiment as a separate trace
+        fig.add_trace(go.Bar(
+            y=sentiment_counts.index,  # Labels1
+            x=sentiment_counts['Positive'],
+            name='Positive',
+            orientation='h',
+            marker=dict(color='green')
+        ))
+
+        fig.add_trace(go.Bar(
+            y=sentiment_counts.index,
+            x=sentiment_counts['Neutral'],
+            name='Neutral',
+            orientation='h',
+            marker=dict(color='gray')
+        ))
+
+        fig.add_trace(go.Bar(
+            y=sentiment_counts.index,
+            x=sentiment_counts['Negative'],
+            name='Negative',
+            orientation='h',
+            marker=dict(color='red')
+        ))
+
+        # Customize layout with adjusted height and spacing
+        fig.update_layout(
+            barmode='stack',
+            margin=dict(l=100, r=20, t=50, b=40),
+            height=350,
+            yaxis=dict(
+                categoryorder="total ascending"  # Ensure bars are sorted
+            ),
+            legend=dict(
+                title='Sentiment',
+                x=0.8,
+                y=1.0,
+            )
+        )
+
+        # Show the figure
+        st.plotly_chart(fig, use_container_width=True)
+
+with st.container():
+    st.subheader("Top Posts")
+
+    
+    # Step 1: Count total mentions (ParentId)
+    mention_counts = df.groupby('ParentId').size().reset_index(name='TotalMentions')
+
+    # Step 2: Merge the mention counts back to the original DataFrame
+    df = pd.merge(df, mention_counts, on='ParentId')
+
+    # Step 3: Drop duplicate rows based on ParentId (to keep unique posts)
+    df_unique = df.drop_duplicates(subset='ParentId')
+
+    # Step 4: Sort by TotalMentions in descending order and take the top 10
+    top_posts = df_unique.sort_values(by='TotalMentions', ascending=False).head(10)
+
+    # Step 5: Add a synthetic 'Follower' column (made-up values)
+    import numpy as np
+    top_posts['Follower'] = np.random.randint(1000, 10000, size=len(top_posts))
+
+    # Step 6: Create hyperlinks for SiteName using UrlTopic
+    top_posts['SiteName'] = top_posts.apply(
+        lambda row: f'<a href="{row["UrlTopic"]}" target="_blank">{row["SiteName"]}</a>', axis=1
+    )
+
+    # Step 7: Select the required columns
+    result = top_posts[[
+        'Title', 'SiteName', 'Follower', 'PublishedDate', 'Likes', 'Shares', 'Comments', 'Views'
+    ]]
+
+
+
+
+with open(os.path.join(base_dir,'tl.json'), "r", encoding="utf8") as f:
+    data = f.read()
+
+timeline(data, height=800)
