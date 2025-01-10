@@ -260,10 +260,15 @@ with st.container(key = "container", height=200, border = False):
     net_follower_growth=round(net_follower_growth, 1)
     percent_growth = (total_follower / total_follower_last_period) if total_followers_gained != 0 else 0
     total_follower = int(round(total_follower, 0))
+    
+    def calculate_change_symbol_and_color(change_value):
+        change_symbol = "+" if change_value > 0 else ""
+        change_color = "green" if change_value > 0 else "red" if change_value < 0 else "gray"
+        return change_symbol, change_color
 
-    change_symbol = "+" if total_followers_gained > 0 else ""
-    change_color = "green" if total_followers_gained > 0 else "red"
     metric1, metric2, metric3, metric4, metric5, metric6 = st.columns(6)
+    change_symbol, change_color = calculate_change_symbol_and_color(total_followers_gained)
+
     with metric1:
         st.markdown(
             f"""
@@ -277,6 +282,8 @@ with st.container(key = "container", height=200, border = False):
             """, 
             unsafe_allow_html=True
         )
+    
+    change_symbol, change_color = calculate_change_symbol_and_color(change_in_mentions_percent)
     with metric2:
         st.markdown(
             f"""
@@ -290,6 +297,8 @@ with st.container(key = "container", height=200, border = False):
             """, 
             unsafe_allow_html=True
         )
+    
+    change_symbol, change_color = calculate_change_symbol_and_color(change_in_mentions_per_day)
     with metric3:
         st.markdown(
             f"""
@@ -303,6 +312,8 @@ with st.container(key = "container", height=200, border = False):
             """, 
             unsafe_allow_html=True
         )
+    
+    change_symbol, change_color = calculate_change_symbol_and_color(change_in_unique_authors)
     with metric4:
         st.markdown(
             f"""
@@ -316,6 +327,8 @@ with st.container(key = "container", height=200, border = False):
             """, 
             unsafe_allow_html=True
         )
+    
+    # For NSR and Engagement metrics that do not have a change value:
     with metric5:
         st.markdown(
             f"""
@@ -324,12 +337,12 @@ with st.container(key = "container", height=200, border = False):
                         box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2); 
                         min-height: 120px;">
                 <div style="font-size:18px;">👑 NSR</div>
-                <!-- Multiply by 100 to display as a percentage, then add '%' at the end -->
                 <div style="font-size:30px; font-weight:bold;">{current_nsr * 100:,.1f}%</div>
             </div>
             """, 
             unsafe_allow_html=True
         )
+    
     with metric6:
         st.markdown(
             f"""
@@ -340,6 +353,7 @@ with st.container(key = "container", height=200, border = False):
             """, 
             unsafe_allow_html=True
         )
+
 
 with st.container(key = "container1", border = True):
     col1, col2 = st.columns([1,2])
