@@ -767,7 +767,7 @@ with st.container(border = True):
         option = {
             "title": {"text": "Region and Hometown Distribution", "left": "center"},
             "tooltip": {
-                "formatter": "{b}: {c} Occurrences"  # Simple Python-based formatting
+                "formatter": "{b}: {c} audience"  # Simple Python-based formatting
             },
             "series": [
                 {
