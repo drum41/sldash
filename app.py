@@ -553,24 +553,39 @@ with st.container(key = "container2", border = True):
             trend_icon = "🔼" if row['Change'] > 0 else "🔽"
             site_name = row['SiteName']
             mentions = int(row['Current_Mentions'])  # Convert mentions to integer
-            percent_of_total = f"{trend_icon} {row['Percent_of_Total']:.0f}%"
             change = int(row['Change'])  # Convert change to integer
+        
+            # Handle percentage change with proper formatting
             if mentions != 0:  # Avoid division by zero
                 percent_change = change / mentions  # Calculate percent change
-                percent_change = f"{trend_icon} {percent_change:.0%}"
+                percent_change_display = f"{trend_icon} {percent_change:.0%}"
             else:
-                percent_change = "100%"  # Handle zero mentions gracefully
+                percent_change_display = f"{trend_icon} 100%"
+        
             # Get the URL for the site
             url = current_period[current_period['SiteName'] == site_name]['UrlTopic'].values[0]
-
+        
             # Create columns for each row
             col1, col2, col3, col4 = st.columns([2, 1, 1, 3])
+        
             with col1:
-                st.markdown(f"<p style='vertical-align: middle;'><a href='{url}'><b>{site_name}</b></a></p>", unsafe_allow_html=True)
+                # Hyperlinked site name
+                st.markdown(
+                    f"<p style='vertical-align: middle; font-size: 14px;'><a href='{url}' target='_blank'><b>{site_name}</b></a></p>",
+                    unsafe_allow_html=True
+                )
             with col2:
-                st.markdown(f"<p style='text-align: center; vertical-align: middle;'>{mentions:,}</p>", unsafe_allow_html=True)
+                # Mentions count with thousand separator
+                st.markdown(
+                    f"<p style='text-align: center; vertical-align: middle; font-size: 14px;'>{mentions:,}</p>",
+                    unsafe_allow_html=True
+                )
             with col3:
-                st.markdown(f"<p style='text-align: center; vertical-align: middle;'>{percent_change}</p>", unsafe_allow_html=True)
+                # Percent change with trend icon
+                st.markdown(
+                    f"<p style='text-align: center; vertical-align: middle; font-size: 14px;'>{percent_change_display}</p>",
+                    unsafe_allow_html=True
+                )
 
             # Plot mention trendline as an area chart
             with col4:
@@ -617,7 +632,7 @@ with st.container(key = "container2", border = True):
         st.markdown("### Top Channels")
 
         # Calculate value counts and percentages
-        channel_counts1 = df["Channel"].value_counts(normalize=True).reset_index()
+        channel_counts1 = current_period["Channel"].value_counts(normalize=True).reset_index()
         channel_counts1.columns = ["Channel", "Percentage"]
         channel_counts1["Percentage"] = (channel_counts1["Percentage"] * 100).round(1)
 
