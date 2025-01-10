@@ -7,3 +7,6 @@ python-dateutil
 numpy
 openpyxl
 datetime
+google-generative-ai
+streamlit-timeline
+vertexai
