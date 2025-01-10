@@ -20,7 +20,6 @@ from collections import defaultdict
 
 
 
-
 st.set_page_config(layout="wide", initial_sidebar_state="auto", page_title="AI-empowered Dashboard", page_icon="🐲")
 # Define your custom CSS
 custom_css = """
@@ -78,16 +77,24 @@ def stream_data(insight):
         time.sleep(0.05)
 creds = temp_file_name
 genai.configure(credentials=creds)
+from google.api_core.exceptions import ResourceExhausted
 
 def gen_insight(prompt, data):
     global gemini_model
-    prompt += f"""
-    QUERY: Give concise insights base on the data you've provided. Only answer in English and no more than 50 words \n {data}
-    CONTEXT:
-    This is data of LG Electronics Vietnam on social media. The data cover the period of {start_date} to {end_date}.
-    """
-    response = gemini_model.generate_content(prompt)
-    return response.text.replace("$", "\\$")
+    try:
+        # Append the query to the prompt
+        prompt += f"""
+        QUERY: Give concise insights based on the data you've provided. Only answer in English and no more than 50 words \n {data}
+        CONTEXT:
+        This is data of LG Electronics Vietnam on social media. The data cover the period of {start_date} to {end_date}.
+        """
+        # Attempt to generate content
+        response = gemini_model.generate_content(prompt)
+        return response.text.replace("$", "\\$")
+    except ResourceExhausted:
+        # Log the error or handle the skip logic
+        print("Resource exhausted error encountered. Skipping this part.")
+        return None  # Return None or any fallback value
 
 
 df, fanpage_df = loaddata()
