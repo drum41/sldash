@@ -58,7 +58,7 @@ def loaddata():
 from google.oauth2 import service_account
 from google.cloud import storage
 
-creds_info = json.loads(st.secrets["google"]["credentials"])
+creds_info = st.secrets["google"]["credentials"]
 credentials = service_account.Credentials.from_service_account_info(creds_info)
 client = storage.Client(credentials=credentials)
 
