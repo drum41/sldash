@@ -17,7 +17,7 @@ from vertexai.generative_models import (
     GenerationConfig,
     GenerativeModel)
 from collections import defaultdict
-
+import tempfile
 
 st.set_page_config(layout="wide", initial_sidebar_state="auto")
 # Define your custom CSS
@@ -47,10 +47,16 @@ def loaddata():
     return df, fanpage_df
 
 # Retrieve JSON credentials from Streamlit secrets
-credentials_str = st.secrets["google"]
+credentials_str = st.secrets["google"]["credentials"]
 
-# Set the environment variable to point to the temporary file
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_str
+# Create a temporary JSON file to store the credentials
+with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as temp_file:
+    temp_file.write(credentials_str.encode())
+    temp_file_name = temp_file.name
+
+# Set the environment variable to point to that temporary file
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file_name
+
 
 PROJECT_ID = "hybrid-autonomy-445719-q2"
 vertexai.init(project=PROJECT_ID)
