@@ -49,10 +49,20 @@ def loaddata():
     return df, fanpage_df
 
 # Parse the JSON to ensure it is valid
+import tempfile
+import json
+
+# Example: Retrieve credentials from Streamlit secrets
 credentials_str = st.secrets["google"]["credentials"]
+credentials_dict = json.loads(credentials_str)
+
+# Create a temporary file
+with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as temp_file:
+    json.dump(credentials_dict, temp_file)  # Write JSON to the file
+    temp_file_name = temp_file.name
 
 # Set the environment variable to the file path
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_str
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file_name
 
 PROJECT_ID = "hybrid-autonomy-445719-q2"
 vertexai.init(project=PROJECT_ID)
@@ -65,7 +75,7 @@ def stream_data(insight):
     for word in insight.split(" "):
         yield word + " "
         time.sleep(0.05)
-creds = credentials_str
+creds = temp_file_name
 genai.configure(credentials=creds)
 
 def gen_insight(prompt, data):
