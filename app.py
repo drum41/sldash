@@ -57,9 +57,10 @@ credentials_str = st.secrets["google"]["credentials"]
 credentials_dict = json.loads(credentials_str)
 
 # Create a temporary file
-with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as temp_file:
+with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as temp_file:
     json.dump(credentials_dict, temp_file)  # Write JSON to the file
     temp_file_name = temp_file.name
+
 
 # Set the environment variable to the file path
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file_name
