@@ -10,4 +10,3 @@ datetime
 google.generativeai
 streamlit-timeline
 vertexai
-tempfile
