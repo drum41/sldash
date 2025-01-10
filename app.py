@@ -93,8 +93,8 @@ def gen_insight(prompt, data):
         return response.text.replace("$", "\\$")
     except ResourceExhausted:
         # Log the error or handle the skip logic
-        print("Resource exhausted error encountered. Skipping this part.")
-        return None  # Return None or any fallback value
+        answ = "Resource exhausted error encountered. Skipping this part."
+        return answ  # Return None or any fallback value
 
 
 df, fanpage_df = loaddata()
