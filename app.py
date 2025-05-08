@@ -772,7 +772,7 @@ with st.container(border = True):
     colwrite1, colwrite2 = st.columns([1, 5])
     with colwrite1:
         st.write("### Demographics")
-    with colwrite2:
+    # with colwrite2:
         # st.write_stream(stream_data(insight_demo))
     st.markdown(f"###### Total number of public audience infor: **{total_public_infor:,}**")
     demo1, demo2, demo3 = st.columns([1,1,2])
@@ -1014,7 +1014,7 @@ with st.container(key = "container4", border = True):
     colwrite3, colwrite4 = st.columns([1,5])
     with colwrite3:
         st.subheader("Deepdive Analysis")
-    with colwrite4:
+    # with colwrite4:
         # st.write_stream(stream_data(sentiment_insight))    
     col41, col42 = st.columns([1,2])
     with col41:
