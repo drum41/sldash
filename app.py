@@ -433,8 +433,8 @@ with st.container(key = "container1", border = True):
 
 
         #====================================================================
-        insight_mention = gen_insight(prompt_mention, data_mention)
-        st.write_stream(stream_data(insight_mention))
+        # insight_mention = gen_insight(prompt_mention, data_mention)
+        # st.write_stream(stream_data(insight_mention))
         #====================================================================
 
         # Access the credentials from Streamlit secrets
@@ -644,8 +644,8 @@ with st.container(key = "container2", border = True):
         # -------------------------------------------------------------------
         data_channel = channel_counts1
         prompt_channel ="Identify the dominant discussion channel along with its market share percentage."
-        insight_channel = gen_insight(prompt_channel, data_channel)
-        st.write_stream(stream_data(insight_channel))
+        # insight_channel = gen_insight(prompt_channel, data_channel)
+        # st.write_stream(stream_data(insight_channel))
         # -------------------------------------------------------------------
         # Sort by highest to lowest
         channel_counts = channel_counts.sort_values(by="Percentage", ascending=False).reset_index(drop=True)
@@ -764,7 +764,7 @@ diskData = create_disk_data(demo)
 # ---------------------------------------------------------------------
 data_demo = f"Total public gender: {bodyMax}\nMale: {male}%\nFemale: {female}% \nAge Range and Gender ditribution: {counts} \n Region and Hometown distribution: {diskData}"
 prompt_demo = "Identify the distribution of public audience by gender, age range, region, and hometown."
-insight_demo = gen_insight(prompt_demo, data_demo)
+# insight_demo = gen_insight(prompt_demo, data_demo)
 # ---------------------------------------------------------------------
 
 st.container()
@@ -773,7 +773,7 @@ with st.container(border = True):
     with colwrite1:
         st.write("### Demographics")
     with colwrite2:
-        st.write_stream(stream_data(insight_demo))
+        # st.write_stream(stream_data(insight_demo))
     st.markdown(f"###### Total number of public audience infor: **{total_public_infor:,}**")
     demo1, demo2, demo3 = st.columns([1,1,2])
     with demo3:
@@ -1006,7 +1006,7 @@ prompt_sentiment = "Conclude the sentiment of discussions about the brand based 
 
 #---------------------------------------------------------------------------------------------------------
 
-sentiment_insight = gen_insight(prompt_sentiment, sentiment_data)
+# sentiment_insight = gen_insight(prompt_sentiment, sentiment_data)
 
 #---------------------------------------------------------------------------------------------------------
 
@@ -1015,7 +1015,7 @@ with st.container(key = "container4", border = True):
     with colwrite3:
         st.subheader("Deepdive Analysis")
     with colwrite4:
-        st.write_stream(stream_data(sentiment_insight))    
+        # st.write_stream(stream_data(sentiment_insight))    
     col41, col42 = st.columns([1,2])
     with col41:
         def sentiment_percentage(df):
