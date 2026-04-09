@@ -255,7 +255,7 @@ with st.container(key = "container", height=200, border = False):
         df[numeric_columns] = df[numeric_columns].apply(pd.to_numeric, errors='coerce')
 
         # Step 2: Replace NaN values with 0 for summation
-        df.fillna(0, inplace=True)
+        df[numeric_columns] = df[numeric_columns].fillna(0)
 
         # Step 3: Calculate total engagement as the sum of the specified columns
         df['Total_Engagement'] = df[numeric_columns].sum(axis=1)
