@@ -9,26 +9,68 @@ import plotly.graph_objects as go
 from streamlit_echarts import st_echarts
 import numpy as np
 import datetime
-import google.generativeai as genai
 import time
 from streamlit_timeline import timeline
-import vertexai
-from vertexai.generative_models import (
-    GenerationConfig,
-    GenerativeModel)
+from openai import OpenAI
 from collections import defaultdict
 
 
 
-st.set_page_config(layout="wide", initial_sidebar_state="auto", page_title="AI-empowered Dashboard", page_icon="🦕")
+
+st.set_page_config(layout="wide", initial_sidebar_state="auto")
 # Define your custom CSS
 custom_css = """
 <style>
-.my-container {
- background-color: #ffffff;
+/* Glassmorphism Cards */
+.glass-card {
+    background: rgba(30, 41, 59, 0.7);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.15);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    text-align: center;
+    height: 145px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    color: #f8fafc;
 }
+.glass-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(59, 130, 246, 0.4);
+}
+.metric-title {
+    font-size: 16px;
+    font-weight: 500;
+    color: #94a3b8;
+    margin-bottom: 8px;
+    letter-spacing: 0.5px;
+}
+.metric-value {
+    font-size: 32px;
+    font-weight: 700;
+    color: #f8fafc;
+    margin-bottom: 4px;
+}
+.metric-change {
+    font-size: 14px;
+    font-weight: 500;
+}
+.change-positive { color: #10b981; }
+.change-negative { color: #ef4444; }
+.change-neutral { color: #94a3b8; }
+
+/* Hide Streamlit Header/Footer for a cleaner 'App' look */
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+header {visibility: hidden;}
 </style>
 """
+st.markdown(custom_css, unsafe_allow_html=True)
 
 
 # Simulate some social listening data
@@ -47,54 +89,39 @@ def loaddata():
     fanpage_df['PublishedDate'] = pd.to_datetime(fanpage_df['PublishedDate']).dt.date
     return df, fanpage_df
 
-# Parse the JSON to ensure it is valid
-import tempfile
-import json
-
-# Example: Retrieve credentials from Streamlit secrets
-credentials_str = st.secrets["google"]["credentials"]
-credentials_dict = json.loads(credentials_str)
-
-# Create a temporary file
-with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as temp_file:
-    json.dump(credentials_dict, temp_file)  # Write JSON to the file
-    temp_file_name = temp_file.name
-
-
-# Set the environment variable to the file path
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file_name
-
-PROJECT_ID = "hybrid-autonomy-445719-q2"
-vertexai.init(project=PROJECT_ID)
-gemini_model = GenerativeModel(
-"gemini-1.5-pro",
-generation_config=GenerationConfig(temperature=0))
+# OpenRouter API setup
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY") or st.secrets.get("OPENROUTER_API_KEY", "")
+openrouter_client = OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key=OPENROUTER_API_KEY,
+)
+OPENROUTER_MODEL = "nvidia/nemotron-3-nano-30b-a3b:free"  # Change to any OpenRouter model slug
 
 
 def stream_data(insight):
     for word in insight.split(" "):
         yield word + " "
         time.sleep(0.05)
-creds = temp_file_name
-genai.configure(credentials=creds)
-from google.api_core.exceptions import ResourceExhausted
+
 
 def gen_insight(prompt, data):
-    global gemini_model
     try:
-        # Append the query to the prompt
-        prompt += f"""
+        full_prompt = prompt + f"""
         QUERY: Give concise insights based on the data you've provided. Only answer in English and no more than 50 words \n {data}
         CONTEXT:
         This is data of LG Electronics Vietnam on social media. The data cover the period of {start_date} to {end_date}.
         """
-        # Attempt to generate content
-        response = gemini_model.generate_content(prompt)
-        return response.text.replace("$", "\\$")
-    except ResourceExhausted:
-        # Log the error or handle the skip logic
-        answ = "Resource exhausted error encountered. Skipping this part."
-        return answ  # Return None or any fallback value
+        response = openrouter_client.chat.completions.create(
+            model=OPENROUTER_MODEL,
+            temperature=0,
+            messages=[
+                {"role": "user", "content": full_prompt}
+            ],
+        )
+        return response.choices[0].message.content.replace("$", "\\$")
+    except Exception as e:
+        print(f"AI generate is not available right now: {e}")
+        return None  # Return None or any fallback value
 
 
 df, fanpage_df = loaddata()
@@ -267,10 +294,10 @@ with st.container(key = "container", height=200, border = False):
     net_follower_growth=round(net_follower_growth, 1)
     percent_growth = (total_follower / total_follower_last_period) if total_followers_gained != 0 else 0
     total_follower = int(round(total_follower, 0))
-    
+
     def calculate_change_symbol_and_color(change_value):
         change_symbol = "+" if change_value > 0 else ""
-        change_color = "green" if change_value > 0 else "red" if change_value < 0 else "gray"
+        change_color = "change-positive" if change_value > 0 else "change-negative" if change_value < 0 else "change-neutral"
         return change_symbol, change_color
 
     metric1, metric2, metric3, metric4, metric5, metric6 = st.columns(6)
@@ -279,10 +306,10 @@ with st.container(key = "container", height=200, border = False):
     with metric1:
         st.markdown(
             f"""
-            <div style="text-align: center; background-color: #FFFFFF; border-radius: 15px; padding: 10px; box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);">
-                <div style="font-size:18px;">👨‍👨‍👧‍👧 Total Follower</div>
-                <div style="font-size:30px; font-weight:bold;">{total_follower:,.0f}</div>
-                <div style="font-size:16px; color:{change_color};">
+            <div class="glass-card">
+                <div class="metric-title">👨‍👨‍👧‍👧 Total Follower</div>
+                <div class="metric-value">{total_follower:,.0f}</div>
+                <div class="metric-change {change_color}">
                     {change_symbol}{total_followers_gained:,.0f} followers
                 </div>
             </div>
@@ -294,10 +321,10 @@ with st.container(key = "container", height=200, border = False):
     with metric2:
         st.markdown(
             f"""
-            <div style="text-align: center; background-color: #FFFFFF; border-radius: 15px; padding: 10px; box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);">
-                <div style="font-size:18px;">📢 Total Mentions</div>
-                <div style="font-size:30px; font-weight:bold;">{current_mentions:,.0f}</div>
-                <div style="font-size:16px; color:{change_color};">
+            <div class="glass-card">
+                <div class="metric-title">📢 Total Mentions</div>
+                <div class="metric-value">{current_mentions:,.0f}</div>
+                <div class="metric-change {change_color}">
                     {change_symbol}{change_in_mentions_percent:,.0f} mentions
                 </div>
             </div>
@@ -309,10 +336,10 @@ with st.container(key = "container", height=200, border = False):
     with metric3:
         st.markdown(
             f"""
-            <div style="text-align: center; background-color: #FFFFFF; border-radius: 15px; padding: 10px; box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);">
-                <div style="font-size:18px;">📣 Mentions Per Day</div>
-                <div style="font-size:30px; font-weight:bold;">{current_mentions_per_day:,.1f}</div>
-                <div style="font-size:16px; color:{change_color};">
+            <div class="glass-card">
+                <div class="metric-title">📣 Mentions Per Day</div>
+                <div class="metric-value">{current_mentions_per_day:,.1f}</div>
+                <div class="metric-change {change_color}">
                     {change_symbol}{change_in_mentions_per_day:,.0f} mentions
                 </div>
             </div>
@@ -324,10 +351,10 @@ with st.container(key = "container", height=200, border = False):
     with metric4:
         st.markdown(
             f"""
-            <div style="text-align: center; background-color: #FFFFFF; border-radius: 15px; padding: 10px; box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2); min-height: 120px;">
-                <div style="font-size:18px;">🗣️ Total Authors</div>
-                <div style="font-size:30px; font-weight:bold;">{curent_unique_authors:,.0f}</div>
-                <div style="font-size:16px; color:{change_color};">
+            <div class="glass-card">
+                <div class="metric-title">🗣️ Total Authors</div>
+                <div class="metric-value">{curent_unique_authors:,.0f}</div>
+                <div class="metric-change {change_color}">
                     {change_symbol}{change_in_unique_authors:,.0f} authors
                 </div>
             </div>
@@ -339,12 +366,12 @@ with st.container(key = "container", height=200, border = False):
     with metric5:
         st.markdown(
             f"""
-            <div style="text-align: center; background-color: #FFFFFF; 
-                        border-radius: 15px; padding: 10px; 
-                        box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2); 
-                        min-height: 120px;">
-                <div style="font-size:18px;">👑 NSR</div>
-                <div style="font-size:30px; font-weight:bold;">{current_nsr * 100:,.1f}%</div>
+            <div class="glass-card">
+                <div class="metric-title">👑 NSR</div>
+                <div class="metric-value">{current_nsr * 100:,.1f}%</div>
+                <div class="metric-change" style="visibility: hidden;">
+                    &nbsp;
+                </div>
             </div>
             """, 
             unsafe_allow_html=True
@@ -353,15 +380,16 @@ with st.container(key = "container", height=200, border = False):
     with metric6:
         st.markdown(
             f"""
-            <div style="text-align: center; background-color: #FFFFFF; border-radius: 15px; padding: 10px; box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2); min-height: 120px;">
-                <div style="font-size:18px;">👍 Engagement </div>
-                <div style="font-size:30px; font-weight:bold;">{total_engagement:,.0f}</div>
+            <div class="glass-card">
+                <div class="metric-title">👍 Engagement </div>
+                <div class="metric-value">{total_engagement:,.0f}</div>
+                <div class="metric-change" style="visibility: hidden;">
+                    &nbsp;
+                </div>
             </div>
             """, 
             unsafe_allow_html=True
         )
-
-
 with st.container(key = "container1", border = True):
     col1, col2 = st.columns([1,2])
     with col1:
@@ -429,13 +457,13 @@ with st.container(key = "container1", border = True):
             return current_counts, previous_counts, aligned_data
         current_counts, previous_counts, aligned_data = calculate_mention_trend(current_period, previous_period)
         prompt_mention = "Compare the volume of mentions between the current period and the previous period. Identify the point at which the discussion trends between the two periods show a significant divergence."
-        data_mention = f"Current and previous period aligned data: {aligned_data.to_string(index=False)}"
+        data_mention = f"Current Period date data: {current_counts.to_string(index=False)}\n\nPrevious Period date data: {previous_counts.to_string(index=False)}\n\nAligned data: {aligned_data.to_string(index=False)}"
 
 
         #====================================================================
-        # insight_mention = gen_insight(prompt_mention, data_mention)
-        # st.write_stream(stream_data(insight_mention))
-        #====================================================================
+        mention_insight_placeholder = st.empty()
+        mention_insight_placeholder.info("🤖 AI is analyzing mentions...")
+#====================================================================
 
         # Access the credentials from Streamlit secrets
         def plot_mention_trendline_plotly(aligned_data, date_col='PublishedDate', value_col='Id'):
@@ -462,7 +490,7 @@ with st.container(key = "container1", border = True):
                     y=aligned_data[f"{value_col}_current"],
                     mode='lines',
                     name='Mention (Current Period)',
-                    line=dict(color='brown', width=2)
+                    line=dict(color='#3b82f6', width=2)
                 )
             )
 
@@ -473,7 +501,7 @@ with st.container(key = "container1", border = True):
                     y=aligned_data[f"{value_col}_previous"],
                     mode='lines',
                     name='Mention (Previous Period)',
-                    line=dict(color='gray', width=1.5, dash='dash')
+                    line=dict(color='#94a3b8', width=1.5, dash='dash')
                 )
             )
 
@@ -553,39 +581,24 @@ with st.container(key = "container2", border = True):
             trend_icon = "🔼" if row['Change'] > 0 else "🔽"
             site_name = row['SiteName']
             mentions = int(row['Current_Mentions'])  # Convert mentions to integer
+            percent_of_total = f"{trend_icon} {row['Percent_of_Total']:.0f}%"
             change = int(row['Change'])  # Convert change to integer
-        
-            # Handle percentage change with proper formatting
             if mentions != 0:  # Avoid division by zero
                 percent_change = change / mentions  # Calculate percent change
-                percent_change_display = f"{trend_icon} {percent_change:.0%}"
+                percent_change = f"{trend_icon} {percent_change:.0%}"
             else:
-                percent_change_display = f"{trend_icon} 100%"
-        
+                percent_change = "100%"  # Handle zero mentions gracefully
             # Get the URL for the site
             url = current_period[current_period['SiteName'] == site_name]['UrlTopic'].values[0]
-        
+
             # Create columns for each row
             col1, col2, col3, col4 = st.columns([2, 1, 1, 3])
-        
             with col1:
-                # Hyperlinked site name
-                st.markdown(
-                    f"<p style='vertical-align: middle; font-size: 14px;'><a href='{url}' target='_blank'><b>{site_name}</b></a></p>",
-                    unsafe_allow_html=True
-                )
+                st.markdown(f"<p style='vertical-align: middle;'><a href='{url}'><b>{site_name}</b></a></p>", unsafe_allow_html=True)
             with col2:
-                # Mentions count with thousand separator
-                st.markdown(
-                    f"<p style='text-align: center; vertical-align: middle; font-size: 14px;'>{mentions:,}</p>",
-                    unsafe_allow_html=True
-                )
+                st.markdown(f"<p style='text-align: center; vertical-align: middle;'>{mentions:,}</p>", unsafe_allow_html=True)
             with col3:
-                # Percent change with trend icon
-                st.markdown(
-                    f"<p style='text-align: center; vertical-align: middle; font-size: 14px;'>{percent_change_display}</p>",
-                    unsafe_allow_html=True
-                )
+                st.markdown(f"<p style='text-align: center; vertical-align: middle;'>{percent_change}</p>", unsafe_allow_html=True)
 
             # Plot mention trendline as an area chart
             with col4:
@@ -632,7 +645,7 @@ with st.container(key = "container2", border = True):
         st.markdown("### Top Channels")
 
         # Calculate value counts and percentages
-        channel_counts1 = current_period["Channel"].value_counts(normalize=True).reset_index()
+        channel_counts1 = df["Channel"].value_counts(normalize=True).reset_index()
         channel_counts1.columns = ["Channel", "Percentage"]
         channel_counts1["Percentage"] = (channel_counts1["Percentage"] * 100).round(1)
 
@@ -644,8 +657,8 @@ with st.container(key = "container2", border = True):
         # -------------------------------------------------------------------
         data_channel = channel_counts1
         prompt_channel ="Identify the dominant discussion channel along with its market share percentage."
-        # insight_channel = gen_insight(prompt_channel, data_channel)
-        # st.write_stream(stream_data(insight_channel))
+        channel_insight_placeholder = st.empty()
+        channel_insight_placeholder.info("🤖 AI is analyzing channel data...")
         # -------------------------------------------------------------------
         # Sort by highest to lowest
         channel_counts = channel_counts.sort_values(by="Percentage", ascending=False).reset_index(drop=True)
@@ -762,27 +775,31 @@ counts = demo.groupby(["Gender", "Age Range"]).size().reset_index(name="Count")
 # Get hierarchical data
 diskData = create_disk_data(demo)
 # ---------------------------------------------------------------------
-data_demo = f"Total public gender: {bodyMax}\nMale: {male}%\nFemale: {female}% \nAge Range and Gender ditribution: {counts} \n Region and Hometown distribution: {diskData}"
+data_demo = f"Total public gender: {bodyMax}\nMale: {male}%\nFemale: {female}% \nAge Range and Gender ditribution: {counts}"
 prompt_demo = "Identify the distribution of public audience by gender, age range, region, and hometown."
-# insight_demo = gen_insight(prompt_demo, data_demo)
-# ---------------------------------------------------------------------
+# insight_demo will be generated at the end
 
 st.container()
 with st.container(border = True):
     colwrite1, colwrite2 = st.columns([1, 5])
     with colwrite1:
         st.write("### Demographics")
-    # with colwrite2:
-        # st.write_stream(stream_data(insight_demo))
+    with colwrite2:
+        demo_insight_placeholder = st.empty()
+        demo_insight_placeholder.info("🤖 AI is generating audience insights...")
     st.markdown(f"###### Total number of public audience infor: **{total_public_infor:,}**")
     demo1, demo2, demo3 = st.columns([1,1,2])
     with demo3:
         
         # Print result
         option = {
-            "title": {"text": "Region and Hometown Distribution", "left": "center"},
+            "title": {
+                "text": "Region and Hometown Distribution", 
+                "left": "center",
+                "textStyle": {"color": "#f8fafc"}
+            },
             "tooltip": {
-                "formatter": "{b}: {c} audience"  # Simple Python-based formatting
+                "formatter": "{b}: {c} Occurrences"  # Simple Python-based formatting
             },
             "series": [
                 {
@@ -822,7 +839,8 @@ with st.container(border = True):
                 "position": "top",
                 "fontSize": 15,
                 "formatter": "{c}%",
-                "fontFamily": sourcesans3
+                "fontFamily": sourcesans3,
+                "color": "#f8fafc"
             }
 
             # ECharts option configuration
@@ -832,7 +850,7 @@ with st.container(border = True):
                     "data": ['Female'],
                     "axisTick": {"show": False},
                     "axisLine": {"show": False},
-                    "axisLabel": {"show": True},
+                    "axisLabel": {"show": True, "color": "#cbd5e1"},
                     "fontFamily": sourcesans3
                 },
                 "yAxis": {
@@ -883,7 +901,7 @@ with st.container(border = True):
                     "data": ['Male'],
                     "axisTick": {"show": False},
                     "axisLine": {"show": False},
-                    "axisLabel": {"show": True}
+                    "axisLabel": {"show": True, "color": "#cbd5e1"}
                 },
                 "yAxis": {
                     "max": 100,
@@ -954,7 +972,7 @@ with st.container(border = True):
             
             yaxis=dict(title =None, showgrid=False, showticklabels=False),
             barmode="stack",  # Set to "stack" for stacked bars
-            template="plotly_white",
+            template="plotly_dark",
             legend=dict(
                 x=0.75,  # Horizontal position (0 is left, 1 is right)
                 y=0.95,  # Vertical position (0 is bottom, 1 is top)
@@ -1006,16 +1024,15 @@ prompt_sentiment = "Conclude the sentiment of discussions about the brand based 
 
 #---------------------------------------------------------------------------------------------------------
 
-# sentiment_insight = gen_insight(prompt_sentiment, sentiment_data)
-
-#---------------------------------------------------------------------------------------------------------
+# sentiment_insight will be generated at the end
 
 with st.container(key = "container4", border = True):
     colwrite3, colwrite4 = st.columns([1,5])
     with colwrite3:
         st.subheader("Deepdive Analysis")
-    # with colwrite4:
-        # st.write_stream(stream_data(sentiment_insight))    
+    with colwrite4:
+        sentiment_insight_placeholder = st.empty()
+        sentiment_insight_placeholder.info("🤖 AI is concluding sentiment analysis...")
     col41, col42 = st.columns([1,2])
     with col41:
         def sentiment_percentage(df):
@@ -1042,12 +1059,12 @@ with st.container(key = "container4", border = True):
         center_value = f"NSR: {current_nsr * 100:,.1f}%"  # Replace with any value you want
 
         # Colors and labels for each segment
-        plot_bgcolor = "#F1F4F8"
+        plot_bgcolor = "rgba(0,0,0,0)"
         quadrant_colors = [
             plot_bgcolor,   # top (invisible filler)
-            "red",           # Negative
-            "lightgray",    # Neutral
-            "green",        # Positive
+            "#ef4444",      # Negative
+            "#64748b",      # Neutral
+            "#10b981",      # Positive
 
         ]
 
@@ -1093,7 +1110,7 @@ with st.container(key = "container4", border = True):
                         x=0.5, xanchor="center", xref="paper",
                         y=0.5, yanchor="middle", yref="paper",
                         showarrow=False,
-                        font=dict(size=20, color="#333")  # Adjust font size and color
+                        font=dict(size=20, color="#f8fafc")  # Adjust font size and color
                     )
                 ]
             )
@@ -1113,7 +1130,7 @@ with st.container(key = "container4", border = True):
             x=sentiment_counts['Positive'],
             name='Positive',
             orientation='h',
-            marker=dict(color='green')
+            marker=dict(color='#10b981')
         ))
 
         fig.add_trace(go.Bar(
@@ -1121,7 +1138,7 @@ with st.container(key = "container4", border = True):
             x=sentiment_counts['Neutral'],
             name='Neutral',
             orientation='h',
-            marker=dict(color='gray')
+            marker=dict(color='#64748b')
         ))
 
         fig.add_trace(go.Bar(
@@ -1129,7 +1146,7 @@ with st.container(key = "container4", border = True):
             x=sentiment_counts['Negative'],
             name='Negative',
             orientation='h',
-            marker=dict(color='red')
+            marker=dict(color='#ef4444')
         ))
 
         # Customize layout with adjusted height and spacing
@@ -1187,3 +1204,29 @@ with open(os.path.join(base_dir,'tl.json'), "r", encoding="utf8") as f:
     data = f.read()
 
 timeline(data, height=800)
+
+# ==============================================================================
+# Delayed Insights Generation
+# ==============================================================================
+import concurrent.futures
+
+# Process insights as soon as they finish rather than waiting for all!
+with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+    future_to_placeholder = {
+        executor.submit(gen_insight, prompt_mention, data_mention): mention_insight_placeholder,
+        executor.submit(gen_insight, prompt_channel, data_channel): channel_insight_placeholder,
+        executor.submit(gen_insight, prompt_demo, data_demo): demo_insight_placeholder,
+        executor.submit(gen_insight, prompt_sentiment, sentiment_data): sentiment_insight_placeholder
+    }
+    
+    # stream them to the UI independently the second any of them is ready
+    for future in concurrent.futures.as_completed(future_to_placeholder):
+        placeholder = future_to_placeholder[future]
+        try:
+            insight_result = future.result()
+            if insight_result:
+                placeholder.write_stream(stream_data(insight_result))
+            else:
+                placeholder.empty() # Clear if generation failed
+        except Exception as e:
+            placeholder.empty()
