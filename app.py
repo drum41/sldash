@@ -452,7 +452,9 @@ with st.container(key = "container1", border = True):
                 on=date_col,
                 how='outer',
                 suffixes=('_current', '_previous')
-            ).fillna(0)  # Fill missing values with 0
+            )
+            aligned_data[f"{value_col}_current"] = aligned_data[f"{value_col}_current"].fillna(0)
+            aligned_data[f"{value_col}_previous"] = aligned_data[f"{value_col}_previous"].fillna(0)
 
             return current_counts, previous_counts, aligned_data
         current_counts, previous_counts, aligned_data = calculate_mention_trend(current_period, previous_period)
@@ -549,7 +551,9 @@ with st.container(key = "container2", border = True):
         previous_counts.columns = ['SiteName', 'Previous_Mentions']
 
         # Merge to align current and previous mentions
-        merged = pd.merge(current_counts, previous_counts, on='SiteName', how='outer').fillna(0)
+        merged = pd.merge(current_counts, previous_counts, on='SiteName', how='outer')
+        merged['Current_Mentions'] = merged['Current_Mentions'].fillna(0)
+        merged['Previous_Mentions'] = merged['Previous_Mentions'].fillna(0)
 
         # Calculate percentage change
         merged['Change'] = merged['Current_Mentions'] - merged['Previous_Mentions']
